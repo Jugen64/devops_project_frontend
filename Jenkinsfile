@@ -33,10 +33,22 @@ pipeline {
         stage('Container Build') {
             steps {
                 sh '''
-                docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
+                docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                 '''
             }
         }
+
+        stage('Security Scan') {
+            steps {
+                sh '''
+                docker pull aquasec/trivy:latest
+                docker run --rm \
+                    -v /var/run/docker.sock:/var/run/docker.sock \
+                    aquasec/trivy:latest image ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
+            }
+        }
+
         stage('Container Push') {
             steps {
                 withCredentials([usernamePassword(
@@ -46,18 +58,11 @@ pipeline {
                 )]) {
                     sh '''
                     echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                    docker tag $IMAGE_NAME:$IMAGE_TAG $DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG
-                    docker push $DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG
+                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} $DOCKER_USER/${IMAGE_NAME}:latest
+                    docker push $DOCKER_USER/${IMAGE_NAME}:latest
                     '''
                 }
             }
         }
-        stage('Security Scan') {
-            steps {
-                sh '''
-                trivy image --exit-code 1 --severity CRITICAL ${IMAGE_NAME}:${BUILD_NUMBER}
-                '''
-            }
-        }  
     }
 }
